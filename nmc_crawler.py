@@ -1,16 +1,50 @@
 import os
+import sys
 import click
 import time
 import requests
 import argparse
+import logging
 from bypy import ByPy
 from bs4 import BeautifulSoup
 
+LOG_MODE = 'INFO'
+LOGFILE = 'nmc_crawler.log'
+PROJECTDIR = os.path.dirname(os.path.abspath(__file__))
 domain_name = 'http://www.nmc.cn'
 base_mosaic_url = domain_name + '/publish/radar/chinaall.html'
 base_station_url = domain_name + '/publish/radar/bei-jing/da-xing.htm'
 base_wc_url = domain_name + '/publish/observations/china/dm/weatherchart-h000.htm'
 base_ltng_url = domain_name + '/publish/observations/lighting.html'
+
+# initialize the logger
+logFile = os.path.join(PROJECTDIR, LOGFILE)
+logModeDict = {
+    'INFO': logging.INFO,
+    'WARNING': logging.WARNING,
+    'DEBUG': logging.DEBUG,
+    'ERROR': logging.ERROR
+    }
+
+logFile = os.path.join(
+    PROJECTDIR, LOGFILE)
+logger = logging.getLogger(__name__)
+
+fh = logging.FileHandler(logFile)
+fh.setLevel(logModeDict[LOG_MODE])
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logModeDict[LOG_MODE])
+
+formatterFh = logging.Formatter('%(asctime)s - ' +
+                                '%(funcName)s - %(lineno)d - %(message)s')
+formatterCh = logging.Formatter('%(message)s')
+fh.setFormatter(formatterFh)
+ch.setFormatter(formatterCh)
+
+logger.addHandler(fh)
+logger.addHandler(ch)
+
+logger.setLevel(logModeDict['DEBUG'])
 
 # Get all urls
 class NMC(object):
@@ -112,11 +146,11 @@ class NMC(object):
                     subdir_name = url.split("/")[-1][:-4].replace(".", "")
 
                 if self.area == 'region':
-                    print ('    Downloading', dir_name, 'mosaics')
+                    logger.info('    Downloading {0} {1}'.format(dir_name, 'mosaics'))
                 elif self.area == 'station':# and self.verbose > 0:
-                    print ('    Downloading', subdir_name, 'mosaics')
+                    logger.info('    Downloading {0} {1}'.format(subdir_name, 'mosaics'))
                 elif self.area == 'china':# and self.verbose > 0:
-                    print ('    Downloading', subdir_name)
+                    logger.info('    Downloading {0}'.format(subdir_name))
 
                 # get name/url and download
                 for html in htmls:
@@ -140,7 +174,7 @@ class NMC(object):
 
                     if not os.path.exists(full_savepath):
                         if self.verbose > 0:
-                            print ('mkdir ' + full_savepath)
+                            logger.info('mkdir {0}'.format(full_savepath))
                         os.makedirs(full_savepath, exist_ok=True)
 
                     if self.kind == 'radar':
@@ -152,7 +186,7 @@ class NMC(object):
 
                     if os.path.isfile(fullfilename):
                         if self.verbose > 0:
-                            print ('    ', name, 'exists in', full_savepath, ' Skip!!')
+                            logger.info('    {0} exists in {1} Skip!'.format(name, full_savepath))
                     else:
                         count = 1
                         try:
@@ -185,15 +219,15 @@ class NMC(object):
                                 }
                             )
                             if self.verbose > 0:
-                                print ('        Downloading',name)
+                                logger.info('        Downloading {0}'.format(name))
 
             finally:
                 finish_output = '    Finish. Save images to ' + os.path.join(savepath,dir_name)
                 if self.area == 'region':
-                    print (finish_output)
+                    logger.info(finish_output)
         
         if self.area == 'station':
-            print (finish_output)
+            logger.info(finish_output)
 
     def get_img_urls(self, url):
         page = ''
@@ -323,9 +357,6 @@ def main(kind, area, resolution, savepath, bdy_path, delete, verbose):
     s.keep_alive = False
 
     if kind == 'radar':
-        # refresh log file
-        f = open('radar.log', 'w+')
-        f.truncate(0)
 
         # download radar mosaics
         if area == 'all':
@@ -346,9 +377,6 @@ def main(kind, area, resolution, savepath, bdy_path, delete, verbose):
             nmc.upload_bdy(bdy_path, delete)
 
     elif kind == 'weatherchart':
-        # refresh log file
-        f = open('weatherchart.log', 'w+')
-        f.truncate(0)
 
         # download weathercharts
         nmc = NMC(kind, 'china', resolution, savepath, verbose)
@@ -357,9 +385,6 @@ def main(kind, area, resolution, savepath, bdy_path, delete, verbose):
         nmc.upload_bdy(bdy_path, delete)
 
     elif kind == 'ltng':
-        # refresh log file
-        f = open('lightning.log', 'w+')
-        f.truncate(0)
 
         # download weathercharts
         nmc = NMC(kind, 'china', resolution, savepath, verbose)
@@ -369,6 +394,4 @@ def main(kind, area, resolution, savepath, bdy_path, delete, verbose):
 
 
 if __name__ == '__main__':
-    start_time = time.time()
     main()
-    # print("--- %s seconds ---" % (time.time() - start_time))
