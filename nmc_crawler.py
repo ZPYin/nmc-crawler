@@ -3,8 +3,6 @@ import click
 import time
 import requests
 import argparse
-import urllib.error
-import urllib.request
 from bypy import ByPy
 from bs4 import BeautifulSoup
 
@@ -45,7 +43,7 @@ class NMC(object):
         htmls = []
         while htmls == []:
             try:
-                base_page = requests.get(self.base_url)
+                base_page = requests.get(self.base_url, timeout=10)
                 soup = BeautifulSoup(base_page.content, 'html.parser')
                 for link in soup.findAll('a'):
                     sub_urls = link.get('href')
@@ -76,7 +74,7 @@ class NMC(object):
         htmls = []
         while htmls == []:
             try:
-                base_page = requests.get(url)
+                base_page = requests.get(url, timeout=10)
                 soup = BeautifulSoup(base_page.content, 'html.parser')
                 for link in soup.findAll('a'):
                     sub_htmls = link.get('href')
@@ -156,24 +154,38 @@ class NMC(object):
                         if self.verbose > 0:
                             print ('    ', name, 'exists in', full_savepath, ' Skip!!')
                     else:
-                        urllib.request.urlretrieve(html, fullfilename)
-                        self.imgFiles.append(
-                            {
-                            'savepath': self.savepath,
-                            'kind': self.kind,
-                            'area': self.area,
-                            'dir_name': dir_name,
-                            'date': date[:-2],
-                            'subdir_name': subdir_name,
-                            'file': filename
-                            }
-                        )
-                        if self.verbose > 0:
-                            print ('        Downloading',name)
-
-            except urllib.error.HTTPError as err:
-                # pass
-                print(err.code)
+                        count = 1
+                        try:
+                            res = requests.get(html, timeout=10)
+                        except Exception as e:
+                            while count <= 3:
+                                try:
+                                    res = requests.get(html, timeout=10)
+                                    break
+                                except Exception as e:
+                                    if self.verbose > 0:
+                                        print('Failure in {0} try: {1}'.format(count, e))
+                                    count = count + 1
+                        
+                        if count > 3:
+                            if self.verbose > 0:
+                                print('Failure in downloading {0}'.format(html))
+                        else:
+                            with open(fullfilename, 'wb') as fh:
+                                fh.write(res.content)
+                            self.imgFiles.append(
+                                {
+                                'savepath': self.savepath,
+                                'kind': self.kind,
+                                'area': self.area,
+                                'dir_name': dir_name,
+                                'date': date[:-2],
+                                'subdir_name': subdir_name,
+                                'file': filename
+                                }
+                            )
+                            if self.verbose > 0:
+                                print ('        Downloading',name)
 
             finally:
                 finish_output = '    Finish. Save images to ' + os.path.join(savepath,dir_name)
@@ -188,7 +200,7 @@ class NMC(object):
         while page == '':
             try:
                 # Download the Response object and parse
-                page = requests.get(url)
+                page = requests.get(url, timeout=10)
                 soup = BeautifulSoup(page.content, 'html.parser')
 
                 # Finding all instances of 'img' at once
@@ -210,24 +222,26 @@ class NMC(object):
         upload imgs to BaiduNet Disk.
         """
 
-        bp = ByPy()
+        if bdy_path:
+            # bdy_path was set!!!
+            bp = ByPy()
 
-        for img in self.imgFiles:
-            BDY_Path = os.path.join(
-                bdy_path, img['kind'], img['area'],
-                img['dir_name'], img['date'], img['subdir_name'],
-                img['file']
-            )
-            local_Path = os.path.join(
-                img['savepath'], img['kind'], img['area'],
-                img['dir_name'], img['date'], img['subdir_name'],
-                img['file']
-            )
+            for img in self.imgFiles:
+                BDY_Path = os.path.join(
+                    bdy_path, img['kind'], img['area'],
+                    img['dir_name'], img['date'], img['subdir_name'],
+                    img['file']
+                )
+                local_Path = os.path.join(
+                    img['savepath'], img['kind'], img['area'],
+                    img['dir_name'], img['date'], img['subdir_name'],
+                    img['file']
+                )
 
-            bp.upload(local_Path, BDY_Path)
+                bp.upload(local_Path, BDY_Path)
 
-            if delete:
-                os.remove(local_Path)
+                if delete:
+                    os.remove(local_Path)
 
 
     def sleep_message(self, func_name):
