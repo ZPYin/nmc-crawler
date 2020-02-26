@@ -5,6 +5,7 @@ import requests
 import argparse
 import urllib.error
 import urllib.request
+from bypy import ByPy
 from bs4 import BeautifulSoup
 
 domain_name = 'http://www.nmc.cn'
@@ -20,6 +21,7 @@ class NMC(object):
         self.area = area
         self.resolution = resolution
         self.savepath = savepath
+        self.imgFiles = []
         self.verbose = verbose
 
         if self.area == 'region':
@@ -144,8 +146,10 @@ class NMC(object):
                         os.makedirs(full_savepath, exist_ok=True)
 
                     if self.kind == 'radar':
-                        fullfilename = os.path.join(full_savepath, name + '.png')
+                        filename = name + '.png'
+                        fullfilename = os.path.join(full_savepath, filename)
                     else:
+                        filename = name + '.jpg'
                         fullfilename = os.path.join(full_savepath, name + '.jpg')
 
                     if os.path.isfile(fullfilename):
@@ -153,6 +157,17 @@ class NMC(object):
                             print ('    ', name, 'exists in', full_savepath, ' Skip!!')
                     else:
                         urllib.request.urlretrieve(html, fullfilename)
+                        self.imgFiles.append(
+                            {
+                            'savepath': self.savepath,
+                            'kind': self.kind,
+                            'area': self.area,
+                            'dir_name': dir_name,
+                            'date': date[:-2],
+                            'subdir_name': subdir_name,
+                            'file': filename
+                            }
+                        )
                         if self.verbose > 0:
                             print ('        Downloading',name)
 
@@ -189,6 +204,31 @@ class NMC(object):
                 self.sleep_message('get_img_urls')
 
         return img_urls
+
+    def upload_bdy(self, bdy_path, delete):
+        """
+        upload imgs to BaiduNet Disk.
+        """
+
+        bp = ByPy()
+
+        for img in self.imgFiles:
+            BDY_Path = os.path.join(
+                bdy_path, img['kind'], img['area'],
+                img['dir_name'], img['date'], img['subdir_name'],
+                img['file']
+            )
+            local_Path = os.path.join(
+                img['savepath'], img['kind'], img['area'],
+                img['dir_name'], img['date'], img['subdir_name'],
+                img['file']
+            )
+
+            bp.upload(local_Path, BDY_Path)
+
+            if delete:
+                os.remove(local_Path)
+
 
     def sleep_message(self, func_name):
         print('Connection of ' + func_name + ' refused by the server..')
@@ -237,6 +277,22 @@ class NMC(object):
 )
 
 @click.option(
+    '--bdy_path',
+    '-b',
+    default=None,
+    help='BaiduNet Disk path. (If set, the files will be uploaded to cloud)',
+    show_default=True
+)
+
+@click.option(
+    '--delete',
+    '-d',
+    default=0,
+    help='Whether to delete the local figures. If bdy_path was set, this will be set to 1.',
+    show_default=True
+)
+
+@click.option(
     '--verbose',
     '-v',
     default = 0,
@@ -245,13 +301,10 @@ class NMC(object):
 )
 # -------------------------------------------------------
 
-def main(kind, area, resolution, savepath, verbose):
-    '''
-    \b
+def main(kind, area, resolution, savepath, bdy_path, delete, verbose):
+    """
     Download weathercharts and radar figures from NMC.
-    Contact:
-        xinzhang1215@gmail.com
-    '''
+    """
     s = requests.session()
     s.keep_alive = False
 
@@ -265,15 +318,18 @@ def main(kind, area, resolution, savepath, verbose):
             nmc = NMC(kind, 'region', resolution, savepath, verbose)
             all_urls = nmc.get_urls()
             nmc.download(all_urls)
+            nmc.upload_bdy(bdy_path, delete)
 
             nmc = NMC(kind, 'station', resolution, savepath, verbose)
             all_urls = nmc.get_urls()
             nmc.download(all_urls)
+            nmc.upload_bdy(bdy_path, delete)
 
         elif area in ['region', 'station']:
             nmc = NMC(kind, area, resolution, savepath, verbose)
             all_urls = nmc.get_urls()
             nmc.download(all_urls)
+            nmc.upload_bdy(bdy_path, delete)
 
     elif kind == 'weatherchart':
         # refresh log file
@@ -284,6 +340,7 @@ def main(kind, area, resolution, savepath, verbose):
         nmc = NMC(kind, 'china', resolution, savepath, verbose)
         all_urls = nmc.get_urls()
         nmc.download(all_urls)
+        nmc.upload_bdy(bdy_path, delete)
 
     elif kind == 'ltng':
         # refresh log file
@@ -294,6 +351,8 @@ def main(kind, area, resolution, savepath, verbose):
         nmc = NMC(kind, 'china', resolution, savepath, verbose)
         all_urls = nmc.get_urls()
         nmc.download(all_urls)
+        nmc.upload_bdy(bdy_path, delete)
+
 
 if __name__ == '__main__':
     start_time = time.time()

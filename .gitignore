@@ -2,3 +2,4 @@ radar/
 weatherchart/
 ltng/
 *.log
+.vscode
